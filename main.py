@@ -62,11 +62,7 @@ pos = init_positions(N, L)
 vel = init_velocities(N, T=1.0)
 
 #Animation Loop
-# fig = plt.figure()
-# ax = fig.add_subplot(111, projection='3d')
-# scat = ax.scatter(pos[:,0], pos[:,1], pos[:,2], s=30, c='blue')
 fig = plt.figure(figsize=(12, 5))
-
 ax_sim = fig.add_subplot(121, projection="3d")
 ax_energy = fig.add_subplot(122)
 speeds = np.linalg.norm(vel, axis=1)
