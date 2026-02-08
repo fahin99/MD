@@ -2,109 +2,131 @@ import numpy as np
 import matplotlib.pyplot as plt
 from matplotlib.animation import FuncAnimation
 
+#ParticleSystem ->positions, velocities, and masses
+#ForceField ->for lennard-jones forces
+#Integrator ->velocity-verlet
+#Simulation ->setup and animation loop
 
-#Parameters
-N = 100
-rho = 0.8
-L = (N / rho)**(1/3)
-dt = 0.019
-steps = 500
+class ParticleSystem:
+    def __init__(self, N, rho, mass=1.0):
+        self.N=N
+        self.mass=mass
+        self.L=(N/rho)**(1/3)
+        self.pos=self.init_pos()
+        self.vel=self.init_vel()
 
-sigma = 1.0
-epsilon = 1.0
-mass = 1.0
+    def init_pos(self):
+        n=int(np.ceil(self.N**(1/3)))
+        coords=np.linspace(0,self.L,n,endpoint=False)
+        pos=np.array(np.meshgrid(coords,coords,coords)).T.reshape(-1,3)
+        return pos[:self.N]
+    
+    def init_vel(self, T=1.0):
+        v=np.random.normal(0, np.sqrt(T/self.mass),(self.N, 3))
+        v-=np.mean(v, axis=0)
+        return v
+    
+#this gives us system.pos, .vel and .L
 
-#Initialization
-def init_positions(N, L):
-    n = int(np.ceil(N**(1/3)))
-    coords = np.linspace(0, L, n, endpoint=False)
-    pos = np.array(np.meshgrid(coords, coords, coords)).T.reshape(-1,3)
-    return pos[:N]
+class ForceField:
+    def __init__(self, epsilon=1.0, sigma=1.0):
+        self.epsilon=epsilon
+        self.sigma=sigma
 
-def init_velocities(N, T=1.0):
-    v = np.random.normal(0, np.sqrt(T/mass), (N,3))
-    v -= np.mean(v, axis=0)
-    return v
+    def compute(self, pos, L):
+        N=len(pos)
+        forces=np.zeros_like(pos)
+        U=0.0
+        for i in range(N):
+            for j in range(i+1, N):
+                r_ij=pos[i]-pos[j]
+                r_ij -=L*np.round(r_ij/L)
+                r2=np.dot(r_ij, r_ij)
+                
+                if r2<(3*self.sigma)**2:
+                    inv_r2=1.0/r2
+                    inv_r6=inv_r2**3
+                    inv_r12=inv_r6**2
+                    f =24*self.epsilon*inv_r2*(2*inv_r12-inv_r6)*r_ij
+                    forces[i]+=f
+                    forces[j]-=f
+                    U+=4*self.epsilon*(inv_r12-inv_r6)
+        return forces, U
+    
+#this gives us system.forces and overall U, using LJ potential theory
 
-#Force Calculation
-def lj_force(pos, L):
-    N = len(pos)
-    forces = np.zeros_like(pos)
-    U = 0.0
-    for i in range(N):
-        for j in range(i+1, N):
-            rij = pos[i] - pos[j]
-            rij -= L * np.round(rij/L)  # minimal image
-            r2 = np.dot(rij, rij)
-            if r2 < (3*sigma)**2:
-                inv_r2 = 1.0 / r2
-                inv_r6 = inv_r2**3
-                inv_r12 = inv_r6**2
-                f = 24*epsilon*inv_r2*(2*inv_r12 - inv_r6) * rij
-                forces[i] += f
-                forces[j] -= f
-                U += 4*epsilon*(inv_r12 - inv_r6)
-    return forces, U
+class Integrator:
+    def __init__(self, dt):
+        self.dt=dt
 
-#Velocity-Verlet
-def velocity_verlet(pos, vel, L, dt):
-    forces, U = lj_force(pos, L)
-    pos += vel*dt + 0.5*forces/mass*dt**2
-    pos %= L
-    new_forces, U_new = lj_force(pos, L)
-    vel += 0.5*(forces + new_forces)/mass*dt
-    K = 0.5 * mass * np.sum(vel**2)
-    return pos, vel, K + U_new
+    def step(self, system, force_field):
+        forces,U=force_field.compute(system.pos, system.L)
+        system.pos +=system.vel*self.dt + 0.5*forces/system.mass*self.dt**2
+        system.pos %=system.L
+        new_forces, U_new =force_field.compute(system.pos, system.L)
 
+        system.vel +=0.5*(forces+new_forces)/system.mass*self.dt
+        K =0.5*system.mass*np.sum(system.vel**2)
+        return U_new+K
+    
+#this helps us to update the pos and vel of the system at each time step as well as calc the net energy
 
-#Simulation Setup
-pos = init_positions(N, L)
-vel = init_velocities(N, T=1.0)
+class Simulation:
+    def __init__(self, N=100, rho=0.8, dt=0.005):
+        self.system=ParticleSystem(N, rho)
+        self.force_field=ForceField()
+        self.integrator=Integrator(dt)
+    
+    def step(self):
+        return self.integrator.step(self.system, self.force_field)
 
-#Animation Loop
-fig = plt.figure(figsize=(12, 5))
-ax_sim = fig.add_subplot(121, projection="3d")
-ax_energy = fig.add_subplot(122)
-speeds = np.linalg.norm(vel, axis=1)
-scat = ax_sim.scatter(pos[:,0], pos[:,1], pos[:,2],c=speeds,cmap="plasma",s=30)
-cbar = fig.colorbar(scat, ax=ax_sim, orientation="vertical", pad=0.1)
-cbar.set_label("Particle Speed (Energy Intensity)")
+#plotting
+steps=500
+sim=Simulation()
+fig=plt.figure(figsize=(12,5))
+ax_sim =fig.add_subplot(121, projection='3d')
+ax_energy=fig.add_subplot(122)
 
-ax_sim.set_xlim([0, L])
-ax_sim.set_ylim([0, L])
-ax_sim.set_zlim([0, L])
-ax_sim.set_xlabel("x")
-ax_sim.set_ylabel("y")
-ax_sim.set_zlabel("z")
+pos=sim.system.pos
+vel=sim.system.vel
+L=sim.system.L
+speeds=np.linalg.norm(vel, axis=1)
+scat =ax_sim.scatter(pos[:,0], pos[:,1], pos[:,2], c=speeds, cmap='plasma', s=30)
+cbar=fig.colorbar(scat, ax=ax_sim)
+cbar.set_label('Particle Speed')
 
-time_data = []
-energy_data = []
-energy_line, = ax_energy.plot([], [], lw=2)
-ax_energy.set_xlabel("Time")
-ax_energy.set_ylabel("Total Energy")
-ax_energy.set_title("Energy Conservation")
-ax_energy.set_xlim(0, steps * dt)
+ax_sim.set_xlim([0,L])
+ax_sim.set_ylim([0,L])
+ax_sim.set_zlim([0,L])
+time_data=[]
+energy_data=[]
+energy_line, = ax_energy.plot([],[],'r-')
 
+ax_energy.set_xlabel('Time')
+ax_energy.set_ylabel('Net Energy')
+
+#animation
 def update(frame):
-    global pos, vel
-    pos, vel, E=velocity_verlet(pos, vel, L, dt)
-    #Store data
-    t = frame * dt
-    time_data.append(t)
-    energy_data.append(E)
-    #Update scatter
-    speeds = np.linalg.norm(vel, axis=1)
-    scat._offsets3d = (pos[:,0], pos[:,1], pos[:,2])
+    E=sim.step()
+    pos=sim.system.pos
+    vel=sim.system.vel
+
+    if frame%10==0:
+        mean_speed=np.mean(np.linalg.norm(vel, axis=1))
+        print(f"Step {frame}, Time {frame*sim.integrator.dt:.2f}, Energy {E:.3f}, Mean Speed {mean_speed:.3f}")
+    speeds=np.linalg.norm(vel, axis=1)
+    scat._offsets3d =(pos[:,0], pos[:,1], pos[:,2])
     scat.set_array(speeds)
-    #Rotate camera slightly
-    ax_sim.view_init(elev=25, azim=0.4 * frame)
-    #Update energy plot
+    ax_sim.view_init(elev=25, azim=frame*0.4)
+
+    time_data.append(frame*sim.integrator.dt)
+    energy_data.append(E)
     energy_line.set_data(time_data, energy_data)
     ax_energy.relim()
     ax_energy.autoscale_view()
+
     return scat, energy_line
 
-
-ani = FuncAnimation(fig,update,frames=steps,interval=60,blit=False)
+ani =FuncAnimation(fig,update,frames=steps,interval=60)
 plt.tight_layout()
 plt.show()
