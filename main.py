@@ -72,7 +72,7 @@ class Integrator:
 #this helps us to update the pos and vel of the system at each time step as well as calc the net energy
 
 class Simulation:
-    def __init__(self, N=100, rho=0.8, dt=0.005):
+    def __init__(self, N=100, rho=0.8, dt=0.0005):
         self.system=ParticleSystem(N, rho)
         self.force_field=ForceField()
         self.integrator=Integrator(dt)
