@@ -371,6 +371,13 @@ class EnhancedPINN(keras.Model):
         energies = tf.stack(energies_list)
         
         return forces, energies
+    def build_model(self):
+        dummy_r = tf.ones((1, 1), dtype=tf.float32)
+
+        # Force-build all subnetworks
+        _ = self.distance_encoder(dummy_r)
+        _ = self.force_net(dummy_r)
+        _ = self.energy_net(dummy_r)
 
 
 def create_training_dataset(positions, forces, energies, batch_size=8, validation_split=0.15):
@@ -534,7 +541,7 @@ class CustomTrainer:
                 best_val_loss = val_loss
                 patience_counter = 0
                 # Save best model
-                self.model.save_weights('best_pinn_weights.h5')
+                self.model.save_weights('best_pinn_weights.weights.h5')
                 print("✓ Saved best model")
             else:
                 patience_counter += 1
@@ -543,7 +550,7 @@ class CustomTrainer:
                     break
         
         # Load best weights
-        self.model.load_weights('best_pinn_weights.h5')
+        self.model.load_weights('best_pinn_weights.weights.h5')
         
         return history
 
@@ -675,6 +682,17 @@ def main():
         hidden_dims=[256, 512, 512, 256],
         dropout_rate=0.1
     )
+    model.build_model() 
+    print("Building model with dummy forward pass...")
+    dummy_pos = tf.zeros((1, CONFIG['N'], 3), dtype=tf.float32)
+    _ = model.compute_forces_batch(
+        dummy_pos,
+        L,
+        CONFIG['rc'] * CONFIG['sigma'],
+        training=False
+    )
+    print("✓ Model built successfully")
+
     
     # Create datasets
     print("\nCreating datasets...")
@@ -704,7 +722,7 @@ def main():
     
     # Save final model
     print("\nSaving final model...")
-    model.save_weights('pinn_model.h5')
+    model.save_weights('pinn_model.weights.h5')
     
     # Save config
     with open('model_config.pkl', 'wb') as f:
@@ -721,8 +739,8 @@ def main():
     print("TRAINING COMPLETE!")
     print("="*70)
     print("\nFiles saved:")
-    print("  - pinn_model.h5 (trained weights)")
-    print("  - best_pinn_weights.h5 (best weights)")
+    print("  - pinn_model.weights.h5 (trained weights)")
+    print("  - best_pinn_weights.weights.h5 (best weights)")
     print("  - model_config.pkl (configuration)")
     print("  - training_data.npz (training data)")
     print("  - training_history.png (training curves)")
