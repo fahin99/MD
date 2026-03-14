@@ -1,5 +1,6 @@
 import numpy as np
 import matplotlib.pyplot as plt
+import pandas as pd
 from matplotlib.animation import FuncAnimation
 from scipy import stats
 
@@ -258,6 +259,18 @@ class Statistics:
         }
         
         return stats_dict
+    
+    def export_dataset(self, filename="md_dataset.csv"):
+        df = pd.DataFrame({
+            "step": np.arange(len(self.energies)),
+            "energy": self.energies,
+            "temperature": self.temps,
+            "pressure": self.pressures,
+            "kinetic": self.kinetic,
+            "potential": self.potential
+        })
+        df.to_csv(filename, index=False)
+
 
 class Visualizer:
     """Real-time visualization with Maxwell-Boltzmann validation"""
@@ -499,3 +512,6 @@ if __name__ == '__main__':
     if final_stats:
         for key, value in final_stats.items():
             print(f"{key:12s}: {value:10.4f}")
+
+    viz.stats.export_dataset()
+    print("\nDataset exported to 'md_dataset.csv'")
